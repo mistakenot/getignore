@@ -1,0 +1,153 @@
+#!/usr/bin/node
+
+var http = require('https');
+var fs = require('fs');
+
+var repoUrl = 'https://api.github.com/repos/github/gitignore';
+var fileRegex = /\w+.gitignore$/
+var puts = console.log;
+var error = console.error;
+
+var display = function(strings) {
+	var size = 3;
+	var tabs = '\t';
+	var width = -1;
+	
+	strings.forEach(function(a) {
+		if (a.length > width) {
+			width = a.length;
+		}
+	});
+	
+	// Pad out shorter names
+	var padded = strings.map(function(s) {
+		return s + ' '.repeat(width - s.length);
+	});
+	
+	// Pad out empty columns
+	for(i = 0; i < size - (padded.length % size); i++) {
+		padded.push(' '.repeat(width));
+	}
+	
+	// Header
+	puts('\nAvailable Filetypes:\n');
+	
+	// Print in groups of [size]
+	for(i = 0; i < padded.length; i+= size) {
+		var chunck = padded.splice(i, size).join(tabs);
+		puts(chunck);
+	}
+}
+
+var httpGet = function(host, path, onSuccess) {
+	var httpOptions = {
+		host: host,
+		path: path,
+		headers: {
+		'User-Agent': 'node.js'
+	  }
+	}
+	
+	http.get(httpOptions, function(response) {
+		var body = '';
+		
+		response.on('data', function(d) {
+			body += d;
+		});
+		
+		response.on('end', function() {
+			if (response.statusCode != 200) {
+				error(response.statusMessage);
+			} else {
+				onSuccess(body);
+			}
+		});
+	});
+}
+
+var getContents = function(onSuccess) {
+	httpGet('api.github.com', '/repos/github/gitignore/contents', function(body) {
+		var files = JSON.parse(body);
+		onSuccess(files);
+	});
+}
+
+var listFiles = function(onSuccess) {
+	getContents(function(files) {
+		var result = [];
+		files.forEach(function(f, i, a) {
+			var match = f.name.match(fileRegex);
+			
+			if (match) {
+				var name = match
+					.toString()
+					.replace('.gitignore', '');
+					
+				result.push(name)
+			}
+		});
+		
+		onSuccess(result);
+	});
+}
+
+var get = function(name) {
+	var host = 'raw.githubusercontent.com';
+	var path = '/github/gitignore/master/' + name +  '.gitignore';
+	
+	puts('\nDownloading ' + host + '/' + path + '...\n');
+	
+	httpGet(host, path, function(result) {
+		fs.writeFile('.gitignore', result, function(err) {
+			if (err) {
+				error(err);
+			} else {
+				puts('Done.\n');
+			}			
+		});
+	});
+}
+
+var list = function() {
+	listFiles(display);
+}
+
+var help = function() {
+	puts('\nGETIGNORE CLI - Download .gitignore templates from Github.');
+	puts('Commands:');
+	puts(' getignore NAME         > Downloads the .gitignore to the current dir.');
+	puts(' getignore --list (-l)  > Lists all available .gitignore files.');
+	puts(' getignore --help (-h)  > Shows this help dialog.\n');
+}
+
+var run = function() {
+	var args = process.argv;
+
+	if (args.length == 2) {
+		help();
+	} 
+	else if (args.length > 2) {
+		switch (args[2]) {
+		
+			case '-l':
+			case '--list':
+				list();
+				break;
+				
+			case '-h':
+			case '--help':
+				help();
+				break;
+				
+			default:
+				get(args[2]);
+				break;
+		}
+	}
+	else {
+		error('Please provide the right command line arguments. See below.');
+		help();
+	}
+}
+
+run();
